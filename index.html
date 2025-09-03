@@ -547,19 +547,32 @@
             })).sort((a, b) => a.distance - b.distance);
         }
 
-        function displayRestaurants(restaurants) {
-            console.log('📋 Displaying', restaurants.length, 'restaurants');
+        function displayRestaurants(restaurants, isDemoData = false) {
+            console.log('📋 Displaying', restaurants.length, 'restaurants', isDemoData ? '(demo)' : '(real)');
             
             const restaurantsContainer = document.getElementById('restaurants');
             restaurantsContainer.innerHTML = '';
             
-            // Add demo banner
+            // Add appropriate banner
             const banner = document.createElement('div');
             banner.className = 'demo-banner';
-            banner.innerHTML = `
-                <strong>🎭 Demo Restaurants</strong><br>
-                <small>Sample restaurants - system is working!</small>
-            `;
+            
+            if (isDemoData) {
+                banner.innerHTML = `
+                    <strong>🎭 Demo Mode</strong><br>
+                    <small>Real restaurant data not available - showing sample restaurants</small>
+                `;
+                banner.style.background = 'rgba(255,165,0,0.2)';
+                banner.style.borderColor = 'rgba(255,165,0,0.5)';
+            } else {
+                banner.innerHTML = `
+                    <strong>✅ Real Restaurant Data</strong><br>
+                    <small>Found ${restaurants.length} nearby restaurants from OpenStreetMap</small>
+                `;
+                banner.style.background = 'rgba(0,255,0,0.15)';
+                banner.style.borderColor = 'rgba(0,255,0,0.3)';
+            }
+            
             restaurantsContainer.appendChild(banner);
             
             // Add restaurant cards
@@ -573,19 +586,31 @@
                 card.style.animationDelay = `${index * 0.1}s`;
                 
                 card.onclick = () => {
-                    alert(`🎭 Demo Restaurant\n\nName: ${restaurant.name}\nType: ${restaurant.cuisine}\nDistance: ${distanceText}\n\nThis is test data to show the system is working!`);
+                    if (isDemoData) {
+                        alert(`🎭 Demo Restaurant\n\nName: ${restaurant.name}\nType: ${restaurant.cuisine}\nDistance: ${distanceText}\n\nThis is test data to show the system is working!`);
+                    } else {
+                        // Open in Google Maps for real restaurants
+                        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}&center=${restaurant.lat},${restaurant.lon}`;
+                        window.open(mapsUrl, '_blank');
+                    }
                 };
+                
+                const statusIcon = isDemoData ? '🎭' : '📍';
                 
                 card.innerHTML = `
                     <div class="restaurant-info">
-                        <div class="restaurant-name">${restaurant.name} 🎭</div>
+                        <div class="restaurant-name">${restaurant.name} ${statusIcon}</div>
                         <div class="restaurant-details">
-                            ${restaurant.cuisine} • ${restaurant.amenity} • ${restaurant.address}
+                            ${restaurant.cuisine} • ${restaurant.amenity}
+                            ${restaurant.address ? ' • ' + restaurant.address : ''}
                         </div>
+                        ${restaurant.opening_hours ? `<div class="restaurant-details">🕒 ${restaurant.opening_hours}</div>` : ''}
                     </div>
                     <div class="rating">
                         <div class="distance">${distanceText}</div>
-                        <div style="font-size: 0.8rem; opacity: 0.7;">🎭 Demo data</div>
+                        <div style="font-size: 0.8rem; opacity: 0.7;">
+                            ${isDemoData ? '🎭 Demo data' : '📍 View on map'}
+                        </div>
                     </div>
                 `;
                 
