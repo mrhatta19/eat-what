@@ -521,9 +521,225 @@
             resultSection.classList.add('show');
             resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             
-            // Generate demo restaurants
-            const restaurants = generateDemoRestaurants(food);
-            displayRestaurants(restaurants);
+            // Show loading state
+            const restaurantsContainer = document.getElementById('restaurants');
+            restaurantsContainer.innerHTML = `
+                <div class="loading-restaurants">
+                    <div class="spinner"></div>
+                    <span>Finding nearby ${food.name.toLowerCase()} places...</span>
+                </div>
+            `;
+            
+            // Search for real restaurants
+            searchRealRestaurants(food);
+        }
+
+        async function searchRealRestaurants(food) {
+            console.log('🔍 Searching for real restaurants:', food.name);
+            
+            if (!userLocation) {
+                console.log('❌ No location available');
+                showError('Location not available. Please enable location access.');
+                return;
+            }
+            
+            try {
+                // Method 1: Try Nominatim API
+                console.log('🔎 Trying Nominatim API...');
+                let restaurants = await searchWithNominatim(food.query, userLocation.lat, userLocation.lng);
+                
+                if (restaurants.length > 0) {
+                    console.log('✅ Found restaurants with Nominatim:', restaurants.length);
+                    displayRestaurants(restaurants, false); // false = real data
+                    return;
+                }
+                
+                // Method 2: Try Overpass API (simplified)
+                console.log('🔎 Trying simplified Overpass API...');
+                restaurants = await searchWithOverpass(food.query, userLocation.lat, userLocation.lng);
+                
+                if (restaurants.length > 0) {
+                    console.log('✅ Found restaurants with Overpass:', restaurants.length);
+                    displayRestaurants(restaurants, false);
+                    return;
+                }
+                
+                console.log('⚠️ No real restaurants found, showing demo data');
+                const demoRestaurants = generateDemoRestaurants(food);
+                displayRestaurants(demoRestaurants, true); // true = demo data
+                
+            } catch (error) {
+                console.error('❌ Real restaurant search failed:', error);
+                const demoRestaurants = generateDemoRestaurants(food);
+                displayRestaurants(demoRestaurants, true);
+            }
+        }
+
+        async function searchWithNominatim(query, lat, lng) {
+            const radiusKm = 2; // 2km search radius
+            const bbox = getBoundingBox(lat, lng, radiusKm);
+            
+            try {
+                const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' restaurant')}&bounded=1&viewbox=${bbox.join(',')}&limit=15&extratags=1`;
+                
+                console.log('📡 Nominatim request:', searchUrl);
+                
+                const response = await fetch(searchUrl, {
+                    headers: {
+                        'User-Agent': 'WhatToEatApp/1.0'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Nominatim request failed');
+                }
+                
+                const data = await response.json();
+                console.log('📍 Nominatim found:', data.length, 'places');
+                
+                return data
+                    .filter(item => item.display_name && (
+                        item.class === 'amenity' && ['restaurant', 'fast_food', 'cafe'].includes(item.type)
+                    ))
+                    .map(item => ({
+                        name: extractRestaurantName(item.display_name),
+                        lat: parseFloat(item.lat),
+                        lon: parseFloat(item.lon),
+                        cuisine: guessCuisine(item.display_name) || query.charAt(0).toUpperCase() + query.slice(1),
+                        amenity: item.type || 'restaurant',
+                        distance: calculateDistance(lat, lng, parseFloat(item.lat), parseFloat(item.lon)),
+                        address: extractAddress(item.display_name),
+                        source: 'nominatim'
+                    }))
+                    .sort((a, b) => a.distance - b.distance)
+                    .slice(0, 8);
+                    
+            } catch (error) {
+                console.error('❌ Nominatim search failed:', error);
+                return [];
+            }
+        }
+
+        async function searchWithOverpass(query, lat, lng) {
+            const radius = 2000; // 2km in meters
+            
+            const overpassQuery = `
+            [out:json][timeout:15];
+            (
+              node["amenity"="restaurant"]["name"~"${query}",i](around:${radius},${lat},${lng});
+              node["amenity"="fast_food"]["name"~"${query}",i](around:${radius},${lat},${lng});
+              node["amenity"="cafe"]["name"~"${query}",i](around:${radius},${lat},${lng});
+            );
+            out body;
+            `;
+            
+            try {
+                console.log('📡 Overpass request for:', query);
+                
+                const response = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: overpassQuery,
+                    headers: {
+                        'Content-Type': 'text/plain',
+                        'User-Agent': 'WhatToEatApp/1.0'
+                    },
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Overpass API returned ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('📍 Overpass found:', data.elements?.length || 0, 'places');
+                
+                return (data.elements || [])
+                    .filter(element => element.tags && element.tags.name)
+                    .map(element => ({
+                        name: element.tags.name,
+                        lat: element.lat,
+                        lon: element.lon,
+                        cuisine: element.tags.cuisine || guessCuisine(element.tags.name) || query.charAt(0).toUpperCase() + query.slice(1),
+                        amenity: element.tags.amenity || 'restaurant',
+                        distance: calculateDistance(lat, lng, element.lat, element.lon),
+                        address: formatAddress(element.tags),
+                        opening_hours: element.tags.opening_hours || '',
+                        source: 'overpass'
+                    }))
+                    .sort((a, b) => a.distance - b.distance)
+                    .slice(0, 8);
+                    
+            } catch (error) {
+                console.error('❌ Overpass search failed:', error);
+                return [];
+            }
+        }
+
+        function getBoundingBox(lat, lng, radiusKm) {
+            const latDelta = radiusKm / 111; // Rough conversion
+            const lngDelta = radiusKm / (111 * Math.cos(lat * Math.PI / 180));
+            
+            return [
+                lng - lngDelta, lat - latDelta, // min_lon, min_lat
+                lng + lngDelta, lat + latDelta  // max_lon, max_lat
+            ];
+        }
+
+        function extractRestaurantName(displayName) {
+            return displayName.split(',')[0];
+        }
+
+        function extractAddress(displayName) {
+            const parts = displayName.split(',');
+            return parts.length > 2 ? parts.slice(1, 3).join(', ') : parts[1] || '';
+        }
+
+        function formatAddress(tags) {
+            const parts = [];
+            if (tags['addr:housenumber']) parts.push(tags['addr:housenumber']);
+            if (tags['addr:street']) parts.push(tags['addr:street']);
+            if (tags['addr:city']) parts.push(tags['addr:city']);
+            return parts.join(' ') || tags['addr:full'] || '';
+        }
+
+        function guessCuisine(name) {
+            if (!name) return null;
+            const lowerName = name.toLowerCase();
+            if (lowerName.includes('pizza')) return 'Pizza';
+            if (lowerName.includes('burger') || lowerName.includes('mcdonald')) return 'Burger';
+            if (lowerName.includes('chicken') || lowerName.includes('kfc') || lowerName.includes('ayam')) return 'Chicken';
+            if (lowerName.includes('sushi') || lowerName.includes('japanese')) return 'Japanese';
+            if (lowerName.includes('coffee') || lowerName.includes('starbucks')) return 'Coffee';
+            if (lowerName.includes('rice') || lowerName.includes('nasi') || lowerName.includes('biryani')) return 'Rice';
+            if (lowerName.includes('noodle') || lowerName.includes('mee') || lowerName.includes('ramen')) return 'Noodles';
+            return null;
+        }
+
+        function calculateDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371; // Radius of the Earth in kilometers
+            const dLat = deg2rad(lat2 - lat1);
+            const dLng = deg2rad(lng2 - lng1);
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI/180);
+        }
+
+        function showError(message) {
+            const restaurantsContainer = document.getElementById('restaurants');
+            restaurantsContainer.innerHTML = `
+                <div class="error-message">
+                    <div>⚠️ ${message}</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem;">
+                        Showing demo data instead
+                    </div>
+                </div>
+            `;
         }
 
         function generateDemoRestaurants(food) {
