@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍜 What to Eat?</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .header {
+            text-align: center;
+            padding: 2rem 1rem;
+            animation: slideDown 0.8s ease-out;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .wheel-container {
+            position: relative;
+            margin: 2rem 0;
+            animation: fadeIn 1s ease-out 0.5s both;
+        }
+
+        #wheelCanvas {
+            border-radius: 50%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        #wheelCanvas:hover {
+            transform: scale(1.02);
+        }
+
+        .wheel-pointer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 30px solid #ff6b6b;
+            z-index: 10;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            margin-top: -175px;
+        }
+
+        .spin-button {
+            background: linear-gradient(45deg, #ff6b6b, #ffa500);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            margin: 1rem;
+            font-weight: bold;
+        }
+
+        .spin-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+        }
+
+        .spin-button:active {
+            transform: translateY(0);
+        }
+
+        .spin-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result-section {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 1rem;
+            max-width: 500px;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.5s ease;
+        }
+
+        .result-section.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .food-emoji {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .food-name {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #ffd700;
+        }
+
+        .restaurants {
+            margin-top: 1.5rem;
+        }
+
+        .restaurant-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .restaurant-card:hover {
+            transform: scale(1.02);
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,215,0,0.5);
+        }
+
+        .restaurant-info {
+            text-align: left;
+            flex: 1;
+        }
+
+        .restaurant-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .restaurant-details {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 0.2rem;
+        }
+
+        .rating {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-direction: column;
+        }
+
+        .distance {
+            color: #ffd700;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+
+        .location-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            z-index: 100;
+        }
+
+        .loading-restaurants {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 2rem;
+            opacity: 0.7;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            animation: spin-loader 1s linear infinite;
+        }
+
+        @keyframes spin-loader {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: rgba(255,0,0,0.2);
+            border: 1px solid rgba(255,0,0,0.3);
+            border-radius: 10px;
+            padding: 1rem;
+            margin: 1rem 0;
+            text-align: center;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(var(--spin-rotation));
+            }
+        }
+
+        .spinning {
+            animation: spin var(--spin-duration) cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            #wheelCanvas {
+                width: 280px;
+                height: 280px;
+            }
+            
+            .result-section {
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+        }
+
+        .demo-banner {
+            background: rgba(255,165,0,0.2);
+            border: 1px solid rgba(255,165,0,0.5);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="location-status" id="locationStatus">📍 Getting location...</div>
+    
+    <div class="header">
+        <h1>🍜 What to Eat?</h1>
+        <p>Spin the wheel and discover nearby restaurants!</p>
+    </div>
+
+    <div class="wheel-container">
+        <div class="wheel-pointer"></div>
+        <canvas id="wheelCanvas" width="350" height="350"></canvas>
+    </div>
+
+    <button class="spin-button" id="spinButton">🎯 SPIN THE WHEEL!</button>
+
+    <div class="result-section" id="resultSection">
+        <div class="food-emoji" id="foodEmoji">🍕</div>
+        <div class="food-name" id="foodName">Pizza</div>
+        <div class="restaurants" id="restaurants">
+            <div class="loading-restaurants">
+                <div class="spinner"></div>
+                <span>Finding nearby restaurants...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // All JavaScript code in one file
+        console.log('🚀 Starting Food Wheel App...');
+
+        const foodOptions = [
+            { name: 'Pizza', emoji: '🍕', color: '#ff6b6b', query: 'pizza' },
+            { name: 'Burger', emoji: '🍔', color: '#4ecdc4', query: 'burger' },
+            { name: 'Sushi', emoji: '🍣', color: '#45b7d1', query: 'sushi' },
+            { name: 'Coffee', emoji: '☕', color: '#8B4513', query: 'coffee' },
+            { name: 'Ramen', emoji: '🍜', color: '#ff9ff3', query: 'ramen' },
+            { name: 'Pasta', emoji: '🍝', color: '#54a0ff', query: 'pasta' },
+            { name: 'Chicken', emoji: '🍗', color: '#5f27cd', query: 'chicken' },
+            { name: 'Salad', emoji: '🥗', color: '#00d2d3', query: 'salad' },
+            { name: 'Steak', emoji: '🥩', color: '#ff6348', query: 'steak' },
+            { name: 'Ice Cream', emoji: '🍦', color: '#ffb8b8', query: 'ice cream' },
+            { name: 'Sandwich', emoji: '🥪', color: '#c44569', query: 'sandwich' },
+            { name: 'Rice', emoji: '🍚', color: '#f39c12', query: 'rice' },
+            { name: 'Noodle', emoji: '🍲', color: '#e74c3c', query: 'noodle' },
+            { name: 'Porridge', emoji: '🥣', color: '#9b59b6', query: 'porridge' },
+            { name: 'Bakery', emoji: '🥖', color: '#fd79a8', query: 'bakery' }
+        ];
+
+        let userLocation = null;
+        let currentRotation = 0;
+        let isSpinning = false;
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('📄 DOM loaded, initializing app...');
+            
+            const canvas = document.getElementById('wheelCanvas');
+            const spinButton = document.getElementById('spinButton');
+            const resultSection = document.getElementById('resultSection');
+            
+            if (!canvas || !spinButton || !resultSection) {
+                console.error('❌ Missing required elements');
+                return;
+            }
+
+            // Get user location
+            requestLocation();
+            
+            // Draw the wheel
+            drawWheel();
+            
+            // Add event listeners
+            spinButton.addEventListener('click', spinWheel);
+            canvas.addEventListener('click', spinWheel);
+            
+            console.log('✅ App initialized successfully');
+        });
+
+        function requestLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        console.log('📍 Location found:', userLocation);
+                        document.getElementById('locationStatus').textContent = '📍 Location found';
+                        setTimeout(() => {
+                            document.getElementById('locationStatus').style.opacity = '0';
+                        }, 3000);
+                    },
+                    function(error) {
+                        console.log('📍 Using default location (KL)');
+                        userLocation = { lat: 3.139, lng: 101.687 };
+                        document.getElementById('locationStatus').textContent = '📍 Using default location';
+                    }
+                );
+            } else {
+                userLocation = { lat: 3.139, lng: 101.687 };
+                document.getElementById('locationStatus').textContent = '📍 Location not supported';
+            }
+        }
+
+        function drawWheel() {
+            const canvas = document.getElementById('wheelCanvas');
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 160;
+            const numSegments = foodOptions.length;
+            const anglePerSegment = (2 * Math.PI) / numSegments;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw segments
+            foodOptions.forEach((food, index) => {
+                const startAngle = index * anglePerSegment + currentRotation;
+                const endAngle = (index + 1) * anglePerSegment + currentRotation;
+                
+                // Draw segment
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.lineTo(centerX, centerY);
+                ctx.fillStyle = food.color;
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Draw emoji
+                const textAngle = startAngle + anglePerSegment / 2;
+                const textX = centerX + Math.cos(textAngle) * (radius * 0.7);
+                const textY = centerY + Math.sin(textAngle) * (radius * 0.7);
+                
+                ctx.font = '24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(food.emoji, textX, textY);
+
+                // Draw food name
+                ctx.font = '12px Arial';
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                const nameX = centerX + Math.cos(textAngle) * (radius * 0.85);
+                const nameY = centerY + Math.sin(textAngle) * (radius * 0.85);
+                ctx.strokeText(food.name, nameX, nameY);
+                ctx.fillText(food.name, nameX, nameY);
+            });
+
+            // Draw center circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw center emoji
+            ctx.font = '20px Arial';
+            ctx.fillStyle = '#333';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎯', centerX, centerY);
+        }
+
+        function spinWheel() {
+            console.log('🎯 Spin button clicked!');
+            
+            if (isSpinning) {
+                console.log('Already spinning...');
+                return;
+            }
+            
+            isSpinning = true;
+            const spinButton = document.getElementById('spinButton');
+            spinButton.disabled = true;
+            spinButton.textContent = '🎯 SPINNING...';
+            
+            // Generate random spin
+            const minSpins = 3;
+            const maxSpins = 6;
+            const spins = Math.random() * (maxSpins - minSpins) + minSpins;
+            const finalAngle = spins * 2 * Math.PI;
+            const duration = 3000;
+            
+            // Set CSS variables for animation
+            document.documentElement.style.setProperty('--spin-rotation', `${finalAngle}rad`);
+            document.documentElement.style.setProperty('--spin-duration', `${duration}ms`);
+            
+            const canvas = document.getElementById('wheelCanvas');
+            canvas.classList.add('spinning');
+            
+            setTimeout(() => {
+                canvas.classList.remove('spinning');
+                currentRotation = finalAngle % (2 * Math.PI);
+                drawWheel();
+                
+                // Calculate winner
+                const numSegments = foodOptions.length;
+                const anglePerSegment = (2 * Math.PI) / numSegments;
+                const pointerAngle = (3 * Math.PI / 2) - currentRotation;
+                let normalizedAngle = pointerAngle % (2 * Math.PI);
+                if (normalizedAngle < 0) {
+                    normalizedAngle += 2 * Math.PI;
+                }
+                let segmentIndex = Math.floor(normalizedAngle / anglePerSegment);
+                if (segmentIndex >= numSegments) {
+                    segmentIndex = 0;
+                }
+                
+                const winner = foodOptions[segmentIndex];
+                console.log('🏆 Winner:', winner.name);
+                
+                showResult(winner);
+                
+                isSpinning = false;
+                spinButton.disabled = false;
+                spinButton.textContent = '🎯 SPIN AGAIN!';
+            }, duration);
+        }
+
+        function showResult(food) {
+            console.log('📺 Showing result for:', food.name);
+            
+            // Update display
+            document.getElementById('foodEmoji').textContent = food.emoji;
+            document.getElementById('foodName').textContent = food.name;
+            
+            // Show section
+            const resultSection = document.getElementById('resultSection');
+            resultSection.classList.add('show');
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            // Generate demo restaurants
+            const restaurants = generateDemoRestaurants(food);
+            displayRestaurants(restaurants);
+        }
+
+        function generateDemoRestaurants(food) {
+            console.log('🎭 Generating demo restaurants for:', food.name);
+            
+            const templates = [
+                `${food.name} House`,
+                `Golden ${food.name}`,
+                `${food.name} Corner`,
+                `Royal ${food.name}`,
+                `Local ${food.name} Shop`
+            ];
+            
+            return templates.map((name, index) => ({
+                name: name,
+                cuisine: food.name,
+                amenity: 'restaurant',
+                distance: Math.random() * 2,
+                address: 'Your Area',
+                isDemoData: true
+            })).sort((a, b) => a.distance - b.distance);
+        }
+
+        function displayRestaurants(restaurants) {
+            console.log('📋 Displaying', restaurants.length, 'restaurants');
+            
+            const restaurantsContainer = document.getElementById('restaurants');
+            restaurantsContainer.innerHTML = '';
+            
+            // Add demo banner
+            const banner = document.createElement('div');
+            banner.className = 'demo-banner';
+            banner.innerHTML = `
+                <strong>🎭 Demo Restaurants</strong><br>
+                <small>Sample restaurants - system is working!</small>
+            `;
+            restaurantsContainer.appendChild(banner);
+            
+            // Add restaurant cards
+            restaurants.forEach((restaurant, index) => {
+                const distanceText = restaurant.distance < 1 
+                    ? `${Math.round(restaurant.distance * 1000)}m` 
+                    : `${restaurant.distance.toFixed(1)}km`;
+                
+                const card = document.createElement('div');
+                card.className = 'restaurant-card';
+                card.style.animationDelay = `${index * 0.1}s`;
+                
+                card.onclick = () => {
+                    alert(`🎭 Demo Restaurant\n\nName: ${restaurant.name}\nType: ${restaurant.cuisine}\nDistance: ${distanceText}\n\nThis is test data to show the system is working!`);
+                };
+                
+                card.innerHTML = `
+                    <div class="restaurant-info">
+                        <div class="restaurant-name">${restaurant.name} 🎭</div>
+                        <div class="restaurant-details">
+                            ${restaurant.cuisine} • ${restaurant.amenity} • ${restaurant.address}
+                        </div>
+                    </div>
+                    <div class="rating">
+                        <div class="distance">${distanceText}</div>
+                        <div style="font-size: 0.8rem; opacity: 0.7;">🎭 Demo data</div>
+                    </div>
+                `;
+                
+                restaurantsContainer.appendChild(card);
+            });
+            
+            console.log('✅ Restaurants displayed successfully');
+        }
+
+        console.log('📦 Script loaded successfully');
+    </script>
+</body>
+</html>
